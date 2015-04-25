@@ -26,6 +26,11 @@
     , "metalogger"               : "*"
     , "cron" : "*"
     , "request" : "*"
+    , "moment": "*"
+    , "emailjs": "*"
+    , "nconf" : "*"
+    , "winston": "*"
+    , "q" : "*"
   }
   , "devDependencies" : {
       "after": "^0.8.1"

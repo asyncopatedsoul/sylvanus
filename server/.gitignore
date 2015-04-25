@@ -10,3 +10,4 @@ logs
 public/bower_components
 config/runtime.json
 config/local.*
+config/credentials.json
