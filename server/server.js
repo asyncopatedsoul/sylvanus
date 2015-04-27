@@ -23,6 +23,24 @@ var emailServer  = email.server.connect({
 //   console.log("...");
 // },1000);
 
+var phantPublicKey = nconf.get("phant").devices.publickey;
+var phantPrivateKey = nconf.get("phant").devices.privatekey;
+var phantUrl = "http://data.sparkfun.com/input/"+phantPublicKey+"?private_key="+phantPrivateKey;
+
+var sparkCoreId = "54ff6a066672524822260167";
+var sparkCoreAccessToken = '4cd240bd67b599f991439773a1bc5989a0c35081';
+var sparkCoreEndpointRelay = 'https://api.spark.io/v1/devices/'+sparkCoreId+'/relay';
+
+var relay = {
+  humidifier: "R4",
+  light: "R2",
+  fan: "R3"
+};
+
+var fanDuration = 40;
+var humidifierDuration = 15;
+var humidifierInterval = 60*2;
+
 var fanIsOff = true;
 
 // every day at 8AM, turn light on 
@@ -38,76 +56,106 @@ var turnOnLightJob2 = new CronJob('00 00 20 * * *', function() {
 // every 10 minutes, (if fan is off) turn humidifier on. after 30 seconds turn humidifier off
 var humidfierJob = setInterval(function(){
   humidifierAction();
-},6*60*1000);
+},humidifierInterval*1000);
 
-// every day at 8AM, turn fan on. after 30 seconds turn fan off and turn humidifier on. after 30 seconds turn humidifier off
-var runFanJob1 = new CronJob('00 00 08 * * *', function() {
+// every day at 6AM, turn fan on. after 30 seconds turn fan off and turn humidifier on. after 30 seconds turn humidifier off
+var runFanJob1 = new CronJob('00 00 06 * * *', function() {
   fanAction();
 }, null, false, 'America/Los_Angeles');
 
-// every day at 4PM, turn fan on. after 30 seconds turn fan off and turn humidifier on. after 30 seconds turn humidifier off
-var runFanJob2 = new CronJob('00 00 16 * * *', function() {
+// every day at 12PM, turn fan on. after 30 seconds turn fan off and turn humidifier on. after 30 seconds turn humidifier off
+var runFanJob2 = new CronJob('00 00 12 * * *', function() {
+  fanAction();
+}, null, false, 'America/Los_Angeles');
+
+// every day at 6PM, turn fan on. after 30 seconds turn fan off and turn humidifier on. after 30 seconds turn humidifier off
+var runFanJob3 = new CronJob('00 00 18 * * *', function() {
   fanAction();
 }, null, false, 'America/Los_Angeles');
 
 // every day at 12AM, turn fan on. after 30 seconds turn fan off and turn humidifier on. after 30 seconds turn humidifier off
-var runFanJob3 = new CronJob('00 00 00 * * *', function() {
+var runFanJob4 = new CronJob('00 00 00 * * *', function() {
   fanAction();
 }, null, false, 'America/Los_Angeles');
+
 
 turnOnLightJob1.start();
 turnOnLightJob2.start();
 runFanJob1.start();
 runFanJob2.start();
 runFanJob3.start();
+runFanJob4.start();
 
+humidifierAction();
+
+function postSparkCall (endpoint, params, callback) {
+
+    request.post(
+    {
+      url: endpoint, 
+      form: {
+        access_token: sparkCoreAccessToken,
+        params: params
+      }
+    }, 
+      function(err,httpResponse,body){ 
+        callback(err,httpResponse,body);
+        //console.log("HUMIDIFIER OFF:",err,body);
+        //emailReport("HUMIDIFIER OFF",body);
+      }
+    );
+}
 
 
 function humidifierAction() {
   if (!fanIsOff) return;
 
   request.post({
-    url:'https://api.spark.io/v1/devices/51ff6b065067545718550287/relay', 
-    form: {access_token:'4cd240bd67b599f991439773a1bc5989a0c35081',
-    params:'r2,HIGH'}}, 
+    url: sparkCoreEndpointRelay, 
+    form: {access_token: sparkCoreAccessToken,
+    params: relay.humidifier+',HIGH'}}, 
     function(err,httpResponse,body){ 
       console.log("HUMIDIFIER ON:",err,body);
-      emailReport("HUMIDIFIER ON",body);
+      //emailReport("HUMIDIFIER ON",body);
+      phantReport("HUMIDIFIER","ON");
 
       setTimeout(function(){
         request.post(
         {
-          url:'https://api.spark.io/v1/devices/51ff6b065067545718550287/relay', 
+          url: sparkCoreEndpointRelay, 
           form: {
-            access_token:'4cd240bd67b599f991439773a1bc5989a0c35081',
-            params:'r2,LOW'
+            access_token: sparkCoreAccessToken,
+            params: relay.humidifier+',LOW'
           }
         }, 
           function(err,httpResponse,body){ 
             console.log("HUMIDIFIER OFF:",err,body);
-            emailReport("HUMIDIFIER OFF",body);
+            phantReport("HUMIDIFIER","OFF");
+            //emailReport("HUMIDIFIER OFF",body);
           }
         );
       
-      },40*1000);
+      },humidifierDuration*1000);
   });
 }
 
 function lightAction(turnLightOn) {
 
-  var params = turnLightOn ? 'r3,HIGH' : 'r3,LOW';
+  var params = turnLightOn ? relay.light+',HIGH' : relay.light+',LOW';
   request.post({
-    url:'https://api.spark.io/v1/devices/51ff6b065067545718550287/relay', 
-    form: {access_token:'4cd240bd67b599f991439773a1bc5989a0c35081',
+    url: sparkCoreEndpointRelay, 
+    form: {access_token: sparkCoreAccessToken,
     params:params}}, 
     function(err,httpResponse,body){ 
 
       if (turnLightOn) {
         console.log("LIGHT ON:",err,body);
-        emailReport("LIGHT OFF",body);
+        phantReport("LIGHT","ON");
+        //emailReport("LIGHT OFF",body);
       } else {
         console.log("LIGHT OFF:",err,body);
-        emailReport("LIGHT OFF",body);
+        phantReport("LIGHT","OFF");
+        //emailReport("LIGHT OFF",body);
       }
     
     });
@@ -116,32 +164,34 @@ function lightAction(turnLightOn) {
 function fanAction() {
 
   request.post({
-    url:'https://api.spark.io/v1/devices/51ff6b065067545718550287/relay', 
-    form: {access_token:'4cd240bd67b599f991439773a1bc5989a0c35081',
-    params:'r4,HIGH'}}, 
+    url: sparkCoreEndpointRelay, 
+    form: {access_token: sparkCoreAccessToken,
+    params: relay.fan+',HIGH'}}, 
     function(err,httpResponse,body){ 
 
       console.log("FAN ON:",err,body);
-      emailReport("FAN ON",body);
+      phantReport("FAN","ON");
+      //emailReport("FAN ON",body);
       fanIsOff = false;
 
       setTimeout(function(){
 
         request.post({
-          url:'https://api.spark.io/v1/devices/51ff6b065067545718550287/relay', 
-          form: {access_token:'4cd240bd67b599f991439773a1bc5989a0c35081',
-          params:'r4,LOW'}}, 
+          url: sparkCoreEndpointRelay, 
+          form: {access_token: sparkCoreAccessToken,
+          params:relay.fan+',LOW'}}, 
           function(err,httpResponse,body){ 
 
             console.log("FAN OFF:",err,body);
-            emailReport("FAN OFF",body);
+            phantReport("FAN","OFF");
+            //emailReport("FAN OFF",body);
             fanIsOff = true;
 
             humidifierAction();
           
           });
 
-      }, 60*1000); 
+      }, fanDuration*1000); 
     
     });
 
@@ -157,6 +207,13 @@ function emailReport (subject, text) {
       }, function(err, message) { console.log(err || message); });
 }
 
+function phantReport (deviceName, status) {
+  // http://data.sparkfun.com/input/[publicKey]?private_key=[privateKey]&device=[value]&status=[value]
+  request.get(phantUrl+"&device="+deviceName+"&status="+status, 
+    function(err,httpResponse,body){ 
+      console.log("PHANT REPORT:",err,body);
+    });
+}
 
 new CronJob('10 * * * * *', function() {
   console.log('You will see this message every 10 seconds');

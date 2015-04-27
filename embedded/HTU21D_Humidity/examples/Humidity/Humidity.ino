@@ -19,12 +19,17 @@
 
 #include <Wire.h>
 #include "HTU21D.h"
+#include <SoftwareSerial.h>
+
+SoftwareSerial mySerial(10, 11); // RX, TX
 
 //Create an instance of the object
 HTU21D myHumidity;
 
 void setup()
 {
+  mySerial.begin(9600);
+  
   Serial.begin(9600);
   Serial.println("HTU21D Example!");
 
@@ -46,5 +51,12 @@ void loop()
   Serial.print("%");
 
   Serial.println();
+  
+  mySerial.print("H:");
+  mySerial.print(humd, 1);
+  mySerial.println();
+  mySerial.print("C:");
+  mySerial.print(temp, 1);
+  mySerial.println();
   delay(1000);
 }
